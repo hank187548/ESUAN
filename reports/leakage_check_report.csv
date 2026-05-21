@@ -1,0 +1,14 @@
+﻿column,in_numeric_features,in_categorical_features,in_drop_cols,status
+address_raw,False,False,True,PASS
+id,False,False,True,PASS
+note_raw,False,False,True,PASS
+parking_price,False,False,False,PASS
+source_file,False,False,True,PASS
+source_folder,False,False,True,PASS
+source_order,False,False,True,PASS
+source_release,False,False,True,PASS
+total_price,False,False,False,PASS
+total_price_wan,False,False,False,PASS
+transfer_id,False,False,True,PASS
+unit_price_m2,False,False,False,PASS
+unit_price_ping,False,False,False,PASS
