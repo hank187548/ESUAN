@@ -1,6 +1,12 @@
 ﻿step,rows_before,rows_after,rows_removed,description
 raw_combined,74181,74181,0,讀取並合併所有臺北市買賣主檔
 remove_invalid_header_rows,74181,74168,13,移除英文欄位說明、重複 header 或明顯非資料列
+add_building_age_missing_flag,74168,74168,0,新增 building_age_missing；building_age 缺失維持 NaN
+flag_layout_outliers,74168,74168,0,新增 layout_outlier_flag；clean_all 保留，model_ready 排除
+flag_special_note_records,74168,74168,0,新增 abnormal/physical/renovation/broad note flags；special_note_flag = abnormal_transaction_flag
+flag_presale_records,74168,74168,0,新增 presale_note_flag；clean_all 保留，主要 model_ready 排除
+flag_separate_registration_records,74168,74168,0,新增 separate_registration_flag；clean_all 保留，主要 model_ready 排除
+flag_area_outliers,74168,74168,0,新增 area_outlier_flag；clean_all 保留，model_ready 排除
 deduplicate,74168,74168,0,同 id 保留 source_order 最大；id 缺失時使用 fallback key
 filter_transaction_target,74168,60638,13530,只保留交易標的包含「房地」
 filter_main_use,60638,49756,10882,保留住家用或主要用途缺失，排除明顯非住宅用途
@@ -11,4 +17,11 @@ filter_invalid_building_age,49702,49696,6,排除 building_age < 0 或 > 100
 filter_outliers,49696,48702,994,以 unit_price_ping 1% 到 99% quantile 過濾
 build_clean_all,48702,48702,0,建立 clean_all dataset
 build_clean_no_parking,48702,31255,17447,clean_all 中只保留 has_parking = 0
-build_model_ready,48702,25424,23278,排除 special_note_flag = 1、透天厝；parking-mode=drop 時排除含車位
+filter_abnormal_transaction_for_model_ready,48702,42193,6509,model_ready 排除 abnormal_transaction_flag = 1
+filter_presale_for_model_ready,41510,34104,7406,主要 model_ready 排除 presale_note_flag = 1；with_presale 版本不套用此排除
+filter_separate_registration_for_model_ready,34104,34102,2,主要 model_ready 排除 separate_registration_flag = 1；with_presale 版本不套用此排除
+filter_area_outlier_for_model_ready,34102,34037,65,model_ready 排除 building_area_m2 < 10 或 > 600 的面積極端案件
+filter_layout_outlier_for_model_ready,34037,33894,143,model_ready 排除 rooms > 10、living_rooms > 5 或 bathrooms > 5 的格局極端案件
+build_model_ready,48702,33894,14808,排除 abnormal_transaction_flag = 1、預售屋、分件登記、面積極端、格局極端、透天厝；parking-mode=drop 時排除含車位
+build_model_ready_with_presale,48702,41300,7402,保留 presale_note_flag 與 separate_registration_flag，其他 model_ready 規則相同
+build_model_ready_strict,48702,18008,30694,沿用舊版嚴格備註規則；保留作為備查

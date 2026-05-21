@@ -192,12 +192,134 @@
 | 1 | 17,447 |
 
 
+### abnormal_transaction_flag 筆數
+
+| abnormal_transaction_flag | rows |
+| --- | --- |
+| 0 | 42,193 |
+| 1 | 6,509 |
+
+
+### physical_condition_flag 筆數
+
+| physical_condition_flag | rows |
+| --- | --- |
+| 0 | 31,749 |
+| 1 | 16,953 |
+
+
+### renovation_flag 筆數
+
+| renovation_flag | rows |
+| --- | --- |
+| 0 | 48,424 |
+| 1 | 278 |
+
+
+### broad_note_flag 筆數
+
+| broad_note_flag | rows |
+| --- | --- |
+| 0 | 28,697 |
+| 1 | 20,005 |
+
+
 ### special_note_flag 筆數
 
 | special_note_flag | rows |
 | --- | --- |
-| 0 | 25,650 |
-| 1 | 23,052 |
+| 0 | 42,193 |
+| 1 | 6,509 |
+
+
+### 各 note flag = 1 筆數與比例
+
+| flag | rows | flagged_rows | flagged_ratio |
+| --- | --- | --- | --- |
+| abnormal_transaction_flag | 48,702 | 6,509 | 13.36% |
+| physical_condition_flag | 48,702 | 16,953 | 34.81% |
+| renovation_flag | 48,702 | 278 | 0.57% |
+| broad_note_flag | 48,702 | 20,005 | 41.08% |
+| special_note_flag | 48,702 | 6,509 | 13.36% |
+
+
+### building_age 缺失筆數與比例
+
+| dataset | rows | building_age_missing_rows | missing_ratio |
+| --- | --- | --- | --- |
+| clean_all | 48,702 | 9,821 | 20.17% |
+| model_ready | 33,894 | 1,116 | 3.29% |
+| model_ready_with_presale | 41,300 | 8,419 | 20.38% |
+| model_ready_strict | 18,008 | 655 | 3.64% |
+
+
+### presale_note_flag 筆數
+
+| presale_note_flag | rows |
+| --- | --- |
+| 0 | 40,748 |
+| 1 | 7,954 |
+
+
+### separate_registration_flag 筆數
+
+| separate_registration_flag | rows |
+| --- | --- |
+| 0 | 40,746 |
+| 1 | 7,956 |
+
+
+### area_outlier_flag 筆數
+
+| area_outlier_flag | rows |
+| --- | --- |
+| 0 | 48,512 |
+| 1 | 190 |
+
+
+### layout_outlier_flag 筆數
+
+| layout_outlier_flag | rows |
+| --- | --- |
+| 0 | 48,461 |
+| 1 | 241 |
+
+
+### layout_outlier_flag = 1 筆數與比例
+
+| flag | rows | flagged_rows | flagged_ratio |
+| --- | --- | --- | --- |
+| layout_outlier_flag | 48,702 | 241 | 0.49% |
+
+
+### rooms / living_rooms / bathrooms 統計
+
+| column | stat | value |
+| --- | --- | --- |
+| rooms | count | 48,702.0000 |
+| rooms | mean | 2.4920 |
+| rooms | std | 1.2718 |
+| rooms | min | 0.0000 |
+| rooms | 25% | 2.0000 |
+| rooms | 50% | 3.0000 |
+| rooms | 75% | 3.0000 |
+| rooms | max | 42.0000 |
+| living_rooms | count | 48,702.0000 |
+| living_rooms | mean | 1.6336 |
+| living_rooms | std | 0.7023 |
+| living_rooms | min | 0.0000 |
+| living_rooms | 25% | 1.0000 |
+| living_rooms | 50% | 2.0000 |
+| living_rooms | 75% | 2.0000 |
+| living_rooms | max | 26.0000 |
+| bathrooms | count | 48,702.0000 |
+| bathrooms | mean | 1.5901 |
+| bathrooms | std | 0.8682 |
+| bathrooms | min | 0.0000 |
+| bathrooms | 25% | 1.0000 |
+| bathrooms | 50% | 2.0000 |
+| bathrooms | 75% | 2.0000 |
+| bathrooms | max | 32.0000 |
 
 
 ## 6. 目標值統計
@@ -206,14 +328,14 @@ target: `unit_price_ping`，單位為萬元 / 坪；統計來源為 model_ready 
 
 | stat | value |
 | --- | --- |
-| count | 25,424.0000 |
-| mean | 81.5755 |
-| std | 26.4957 |
+| count | 33,894.0000 |
+| mean | 77.5631 |
+| std | 25.7402 |
 | min | 22.0783 |
-| 25% | 63.0666 |
-| 50% | 77.9788 |
-| 75% | 95.0240 |
-| max | 182.4562 |
+| 25% | 59.3040 |
+| 50% | 73.8712 |
+| 75% | 91.2879 |
+| max | 182.4522 |
 
 
 ## 7. outlier 過濾
@@ -233,7 +355,38 @@ target: `unit_price_ping`，單位為萬元 / 坪；統計來源為 model_ready 
 | --- | --- |
 | clean_all | 48,702 |
 | clean_no_parking | 31,255 |
-| model_ready | 25,424 |
+| taipei_house_model_ready.csv | 33,894 |
+| taipei_house_model_ready_with_presale.csv | 41,300 |
+| taipei_house_model_ready_strict.csv | 18,008 |
+
+
+### model_ready 篩選補充統計
+
+| step | rows |
+| --- | --- |
+| 排除異常交易備註前 | 48,702 |
+| 排除異常交易備註後 | 42,193 |
+| base filters 後 | 41,510 |
+| 排除預售屋前 | 41,510 |
+| 排除預售屋後 | 34,104 |
+| 排除分件登記前 | 34,104 |
+| 排除分件登記後 | 34,102 |
+| 排除面積極端前 | 34,102 |
+| 排除面積極端後 | 34,037 |
+| 排除格局極端前 | 34,037 |
+| 排除格局極端後 | 33,894 |
+| with_presale 排除異常交易備註前 | 48,702 |
+| with_presale 排除異常交易備註後 | 42,193 |
+| with_presale base filters 後 | 41,510 |
+| with_presale 排除面積極端前 | 41,510 |
+| with_presale 排除面積極端後 | 41,443 |
+| with_presale 排除格局極端前 | 41,443 |
+| with_presale 排除格局極端後 | 41,300 |
+| strict 沿用舊版嚴格備註規則前 | 48,702 |
+| strict 沿用舊版嚴格備註規則後 | 25,650 |
+| strict base filters 後 | 25,424 |
+| strict 排除面積極端後 | 18,056 |
+| strict 排除格局極端後 | 18,008 |
 
 
 - feature_config: `/home/nas2/Personal/Hank/Esuan/data/processed/feature_config.json`
@@ -248,6 +401,10 @@ target: `unit_price_ping`，單位為萬元 / 坪；統計來源為 model_ready 
 | /home/nas2/Personal/Hank/Esuan/data/processed/taipei_house_clean_no_parking.csv | csv | ok |  |
 | /home/nas2/Personal/Hank/Esuan/data/processed/taipei_house_model_ready.parquet | parquet | ok |  |
 | /home/nas2/Personal/Hank/Esuan/data/processed/taipei_house_model_ready.csv | csv | ok |  |
+| /home/nas2/Personal/Hank/Esuan/data/processed/taipei_house_model_ready_with_presale.parquet | parquet | ok |  |
+| /home/nas2/Personal/Hank/Esuan/data/processed/taipei_house_model_ready_with_presale.csv | csv | ok |  |
+| /home/nas2/Personal/Hank/Esuan/data/processed/taipei_house_model_ready_strict.parquet | parquet | ok |  |
+| /home/nas2/Personal/Hank/Esuan/data/processed/taipei_house_model_ready_strict.csv | csv | ok |  |
 | /home/nas2/Personal/Hank/Esuan/reports/filter_log.csv | csv | ok |  |
 
 

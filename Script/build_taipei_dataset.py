@@ -70,7 +70,7 @@ RESIDENTIAL_BUILDING_TYPES = ["住宅大樓", "華廈", "公寓", "套房", "透
 MODEL_BUILDING_TYPES = ["住宅大樓", "華廈", "公寓", "套房"]
 NON_RESIDENTIAL_USE_KEYWORDS = ["商業用", "工業用", "辦公室", "店鋪", "廠房"]
 
-SPECIAL_NOTE_KEYWORDS = [
+STRICT_SPECIAL_NOTE_KEYWORDS = [
     "親友",
     "關係人",
     "特殊",
@@ -91,6 +91,48 @@ SPECIAL_NOTE_KEYWORDS = [
     "裝潢",
     "夾層",
     "加蓋",
+]
+
+ABNORMAL_TRANSACTION_KEYWORDS = [
+    "親友",
+    "關係人",
+    "急買急賣",
+    "拍賣",
+    "債權",
+    "協議",
+    "讓與",
+    "瑕疵",
+    "畸零",
+    "持分",
+]
+
+PHYSICAL_CONDITION_KEYWORDS = [
+    "增建",
+    "未登記",
+    "加蓋",
+    "夾層",
+    "毛胚",
+]
+
+RENOVATION_KEYWORDS = [
+    "裝潢",
+]
+
+BROAD_NOTE_KEYWORDS = [
+    "包含",
+    "其他",
+]
+
+PRESALE_NOTE_KEYWORDS = [
+    "預售屋買賣",
+    "預售屋",
+    "預售",
+]
+
+SEPARATE_REGISTRATION_KEYWORDS = [
+    "土地及建物分件登記",
+    "分件登記",
+    "分件",
 ]
 
 MODEL_READY_COLUMNS = [
@@ -116,6 +158,7 @@ MODEL_READY_COLUMNS = [
     "main_use_missing",
     "material",
     "building_age",
+    "building_age_missing",
     "building_area_m2",
     "building_area_ping",
     "main_building_area_m2",
@@ -135,6 +178,15 @@ MODEL_READY_COLUMNS = [
     "has_elevator",
     "has_parking",
     "parking_area_m2",
+    "area_outlier_flag",
+    "layout_outlier_flag",
+    "abnormal_transaction_flag",
+    "physical_condition_flag",
+    "renovation_flag",
+    "broad_note_flag",
+    "special_note_flag",
+    "presale_note_flag",
+    "separate_registration_flag",
     "total_price",
     "total_price_wan",
     "parking_price",
@@ -155,6 +207,7 @@ FEATURE_CONFIG = {
         "trade_year",
         "main_use_missing",
         "building_age",
+        "building_age_missing",
         "building_area_m2",
         "building_area_ping",
         "main_building_area_m2",
@@ -174,6 +227,15 @@ FEATURE_CONFIG = {
         "has_elevator",
         "has_parking",
         "parking_area_m2",
+        "area_outlier_flag",
+        "layout_outlier_flag",
+        "abnormal_transaction_flag",
+        "physical_condition_flag",
+        "renovation_flag",
+        "broad_note_flag",
+        "special_note_flag",
+        "presale_note_flag",
+        "separate_registration_flag",
     ],
     "drop_cols": [
         "id",
@@ -597,9 +659,68 @@ def add_categorical_boolean_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def add_special_note_flag(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    pattern = "|".join(re.escape(keyword) for keyword in SPECIAL_NOTE_KEYWORDS)
-    notes = df["note_raw"].fillna("").astype(str)
-    df["special_note_flag"] = notes.str.contains(pattern, regex=True, na=False).astype(int)
+    notes = _combined_note_text(df)
+    df["abnormal_transaction_flag"] = _keyword_flag(notes, ABNORMAL_TRANSACTION_KEYWORDS)
+    df["physical_condition_flag"] = _keyword_flag(notes, PHYSICAL_CONDITION_KEYWORDS)
+    df["renovation_flag"] = _keyword_flag(notes, RENOVATION_KEYWORDS)
+    df["broad_note_flag"] = _keyword_flag(notes, BROAD_NOTE_KEYWORDS)
+    df["strict_special_note_flag"] = _keyword_flag(notes, STRICT_SPECIAL_NOTE_KEYWORDS)
+    df["special_note_flag"] = df["abnormal_transaction_flag"]
+    return df
+
+
+def _keyword_flag(text: pd.Series, keywords: list[str]) -> pd.Series:
+    pattern = "|".join(re.escape(keyword) for keyword in keywords)
+    return text.str.contains(pattern, regex=True, na=False).astype(int)
+
+
+def _combined_note_text(df: pd.DataFrame) -> pd.Series:
+    note_raw = df["note_raw"] if "note_raw" in df.columns else pd.Series("", index=df.index)
+    original_note = df["備註"] if "備註" in df.columns else pd.Series("", index=df.index)
+    return (
+        note_raw.fillna("").astype(str)
+        + " "
+        + original_note.fillna("").astype(str)
+    )
+
+
+def add_building_age_missing_flag(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df["building_age_missing"] = df["building_age"].isna().astype(int)
+    return df
+
+
+def add_presale_note_flag(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    pattern = "|".join(re.escape(keyword) for keyword in PRESALE_NOTE_KEYWORDS)
+    notes = _combined_note_text(df)
+    df["presale_note_flag"] = notes.str.contains(pattern, regex=True, na=False).astype(int)
+    return df
+
+
+def add_separate_registration_flag(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    pattern = "|".join(re.escape(keyword) for keyword in SEPARATE_REGISTRATION_KEYWORDS)
+    notes = _combined_note_text(df)
+    df["separate_registration_flag"] = notes.str.contains(pattern, regex=True, na=False).astype(int)
+    return df
+
+
+def add_area_outlier_flag(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    area = df["building_area_m2"]
+    df["area_outlier_flag"] = ((area < 10) | (area > 600)).fillna(False).astype(int)
+    return df
+
+
+def add_layout_outlier_flag(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    layout_outlier = (
+        (df["rooms"] > 10)
+        | (df["living_rooms"] > 5)
+        | (df["bathrooms"] > 5)
+    )
+    df["layout_outlier_flag"] = layout_outlier.fillna(False).astype(int)
     return df
 
 
@@ -763,9 +884,42 @@ def build_clean_no_parking(df: pd.DataFrame) -> pd.DataFrame:
     return df.loc[df["has_parking"].fillna(0).eq(0)].copy().reset_index(drop=True)
 
 
-def build_model_ready(df: pd.DataFrame, parking_mode: str = "keep") -> pd.DataFrame:
+def build_model_ready(
+    df: pd.DataFrame,
+    parking_mode: str = "keep",
+    exclude_presale_and_separate: bool = True,
+    note_filter_mode: str = "abnormal",
+    filter_log: list[dict[str, Any]] | None = None,
+    return_stats: bool = False,
+) -> pd.DataFrame | tuple[pd.DataFrame, dict[str, Any]]:
     work = df.copy()
-    work = work.loc[work["special_note_flag"].fillna(0).ne(1)].copy()
+    stats: dict[str, Any] = {"rows_start": int(len(work))}
+
+    before = len(work)
+    if note_filter_mode == "abnormal":
+        note_filter_col = "abnormal_transaction_flag"
+        note_filter_step = "filter_abnormal_transaction_for_model_ready"
+        note_filter_description = "model_ready 排除 abnormal_transaction_flag = 1"
+    elif note_filter_mode == "strict":
+        note_filter_col = "strict_special_note_flag"
+        note_filter_step = "filter_strict_special_note_for_model_ready"
+        note_filter_description = "strict model_ready 沿用舊版嚴格備註規則排除"
+    else:
+        raise ValueError("note_filter_mode must be abnormal or strict")
+
+    work = work.loc[work[note_filter_col].fillna(0).ne(1)].copy()
+    if filter_log is not None:
+        append_filter_log(
+            filter_log,
+            note_filter_step,
+            before,
+            len(work),
+            note_filter_description,
+        )
+    stats["rows_before_note_filter"] = int(before)
+    stats["rows_after_note_filter"] = int(len(work))
+    stats["note_filter_mode"] = note_filter_mode
+
     work = work.loc[_contains_any(work["building_type"], MODEL_BUILDING_TYPES)].copy()
 
     if parking_mode == "drop":
@@ -773,10 +927,69 @@ def build_model_ready(df: pd.DataFrame, parking_mode: str = "keep") -> pd.DataFr
     elif parking_mode != "keep":
         raise ValueError("parking_mode must be keep or drop")
 
+    stats["rows_after_base_filters"] = int(len(work))
+
+    before = len(work)
+    if exclude_presale_and_separate:
+        work = work.loc[work["presale_note_flag"].fillna(0).ne(1)].copy()
+    if filter_log is not None:
+        append_filter_log(
+            filter_log,
+            "filter_presale_for_model_ready",
+            before,
+            len(work),
+            "主要 model_ready 排除 presale_note_flag = 1；with_presale 版本不套用此排除",
+        )
+    stats["rows_before_presale_filter"] = int(before)
+    stats["rows_after_presale_filter"] = int(len(work))
+
+    before = len(work)
+    if exclude_presale_and_separate:
+        work = work.loc[work["separate_registration_flag"].fillna(0).ne(1)].copy()
+    if filter_log is not None:
+        append_filter_log(
+            filter_log,
+            "filter_separate_registration_for_model_ready",
+            before,
+            len(work),
+            "主要 model_ready 排除 separate_registration_flag = 1；with_presale 版本不套用此排除",
+        )
+    stats["rows_before_separate_registration_filter"] = int(before)
+    stats["rows_after_separate_registration_filter"] = int(len(work))
+
+    before = len(work)
+    work = work.loc[work["area_outlier_flag"].fillna(0).ne(1)].copy()
+    if filter_log is not None:
+        append_filter_log(
+            filter_log,
+            "filter_area_outlier_for_model_ready",
+            before,
+            len(work),
+            "model_ready 排除 building_area_m2 < 10 或 > 600 的面積極端案件",
+        )
+    stats["rows_before_area_outlier_filter"] = int(before)
+    stats["rows_after_area_outlier_filter"] = int(len(work))
+
+    before = len(work)
+    work = work.loc[work["layout_outlier_flag"].fillna(0).ne(1)].copy()
+    if filter_log is not None:
+        append_filter_log(
+            filter_log,
+            "filter_layout_outlier_for_model_ready",
+            before,
+            len(work),
+            "model_ready 排除 rooms > 10、living_rooms > 5 或 bathrooms > 5 的格局極端案件",
+        )
+    stats["rows_before_layout_outlier_filter"] = int(before)
+    stats["rows_after_layout_outlier_filter"] = int(len(work))
+
     for col in MODEL_READY_COLUMNS:
         if col not in work.columns:
             work[col] = pd.NA
-    return work[MODEL_READY_COLUMNS].copy().reset_index(drop=True)
+    result = work[MODEL_READY_COLUMNS].copy().reset_index(drop=True)
+    if return_stats:
+        return result, stats
+    return result
 
 
 def write_feature_config(output_dir: str | Path) -> Path:
@@ -816,6 +1029,8 @@ def write_outputs(
     clean_all: pd.DataFrame,
     clean_no_parking: pd.DataFrame,
     model_ready: pd.DataFrame,
+    model_ready_with_presale: pd.DataFrame,
+    model_ready_strict: pd.DataFrame,
     filter_log: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     output_dir = Path(output_dir)
@@ -829,6 +1044,8 @@ def write_outputs(
         "taipei_house_clean_all": clean_all,
         "taipei_house_clean_no_parking": clean_no_parking,
         "taipei_house_model_ready": model_ready,
+        "taipei_house_model_ready_with_presale": model_ready_with_presale,
+        "taipei_house_model_ready_strict": model_ready_strict,
     }
     for name, df in datasets.items():
         outputs.extend(_write_dataset(df, output_dir / name))
@@ -879,6 +1096,25 @@ def _date_str(value: Any) -> str:
     return pd.Timestamp(value).strftime("%Y-%m-%d")
 
 
+def _flag_count_ratio_rows(df: pd.DataFrame, col: str) -> list[list[Any]]:
+    if df.empty or col not in df.columns:
+        return []
+    total = len(df)
+    flagged = int(df[col].fillna(0).eq(1).sum())
+    return [[col, total, flagged, f"{flagged / total:.2%}" if total else ""]]
+
+
+def _numeric_summary_rows(df: pd.DataFrame, cols: list[str]) -> list[list[Any]]:
+    rows: list[list[Any]] = []
+    for col in cols:
+        if col not in df.columns:
+            continue
+        summary = df[col].describe()
+        for stat in ["count", "mean", "std", "min", "25%", "50%", "75%", "max"]:
+            rows.append([col, stat, summary.get(stat, np.nan)])
+    return rows
+
+
 def write_summary_report(
     report_dir: str | Path,
     raw_dir: str | Path,
@@ -889,7 +1125,12 @@ def write_summary_report(
     clean_all: pd.DataFrame,
     clean_no_parking: pd.DataFrame,
     model_ready: pd.DataFrame,
+    model_ready_with_presale: pd.DataFrame,
     dedup_stats: dict[str, int],
+    model_ready_stats: dict[str, Any],
+    model_ready_with_presale_stats: dict[str, Any],
+    model_ready_strict: pd.DataFrame,
+    model_ready_strict_stats: dict[str, Any],
     outlier_info: dict[str, Any],
     output_results: list[dict[str, Any]],
     feature_config_path: Path,
@@ -920,7 +1161,64 @@ def write_summary_report(
     building_type_rows = _value_counts_rows(clean_all, "building_type")
     main_use_rows = _value_counts_rows(clean_all, "main_use")
     parking_rows = _value_counts_rows(clean_all, "has_parking")
+    abnormal_transaction_rows = _value_counts_rows(clean_all, "abnormal_transaction_flag")
+    physical_condition_rows = _value_counts_rows(clean_all, "physical_condition_flag")
+    renovation_rows = _value_counts_rows(clean_all, "renovation_flag")
+    broad_note_rows = _value_counts_rows(clean_all, "broad_note_flag")
     special_note_rows = _value_counts_rows(clean_all, "special_note_flag")
+    presale_note_rows = _value_counts_rows(clean_all, "presale_note_flag")
+    separate_registration_rows = _value_counts_rows(clean_all, "separate_registration_flag")
+    area_outlier_rows = _value_counts_rows(clean_all, "area_outlier_flag")
+    layout_outlier_rows = _value_counts_rows(clean_all, "layout_outlier_flag")
+    note_flag_ratio_rows = []
+    for col in [
+        "abnormal_transaction_flag",
+        "physical_condition_flag",
+        "renovation_flag",
+        "broad_note_flag",
+        "special_note_flag",
+    ]:
+        note_flag_ratio_rows.extend(_flag_count_ratio_rows(clean_all, col))
+    layout_outlier_ratio_rows = _flag_count_ratio_rows(clean_all, "layout_outlier_flag")
+    layout_summary_rows = _numeric_summary_rows(clean_all, ["rooms", "living_rooms", "bathrooms"])
+
+    building_age_missing_rows = []
+    for name, dataset in [
+        ("clean_all", clean_all),
+        ("model_ready", model_ready),
+        ("model_ready_with_presale", model_ready_with_presale),
+        ("model_ready_strict", model_ready_strict),
+    ]:
+        missing = int(dataset["building_age"].isna().sum()) if "building_age" in dataset.columns else 0
+        total = int(len(dataset))
+        missing_ratio = f"{missing / total:.2%}" if total else ""
+        building_age_missing_rows.append([name, total, missing, missing_ratio])
+
+    model_ready_filter_rows = [
+        ["排除異常交易備註前", model_ready_stats.get("rows_before_note_filter")],
+        ["排除異常交易備註後", model_ready_stats.get("rows_after_note_filter")],
+        ["base filters 後", model_ready_stats.get("rows_after_base_filters")],
+        ["排除預售屋前", model_ready_stats.get("rows_before_presale_filter")],
+        ["排除預售屋後", model_ready_stats.get("rows_after_presale_filter")],
+        ["排除分件登記前", model_ready_stats.get("rows_before_separate_registration_filter")],
+        ["排除分件登記後", model_ready_stats.get("rows_after_separate_registration_filter")],
+        ["排除面積極端前", model_ready_stats.get("rows_before_area_outlier_filter")],
+        ["排除面積極端後", model_ready_stats.get("rows_after_area_outlier_filter")],
+        ["排除格局極端前", model_ready_stats.get("rows_before_layout_outlier_filter")],
+        ["排除格局極端後", model_ready_stats.get("rows_after_layout_outlier_filter")],
+        ["with_presale 排除異常交易備註前", model_ready_with_presale_stats.get("rows_before_note_filter")],
+        ["with_presale 排除異常交易備註後", model_ready_with_presale_stats.get("rows_after_note_filter")],
+        ["with_presale base filters 後", model_ready_with_presale_stats.get("rows_after_base_filters")],
+        ["with_presale 排除面積極端前", model_ready_with_presale_stats.get("rows_before_area_outlier_filter")],
+        ["with_presale 排除面積極端後", model_ready_with_presale_stats.get("rows_after_area_outlier_filter")],
+        ["with_presale 排除格局極端前", model_ready_with_presale_stats.get("rows_before_layout_outlier_filter")],
+        ["with_presale 排除格局極端後", model_ready_with_presale_stats.get("rows_after_layout_outlier_filter")],
+        ["strict 沿用舊版嚴格備註規則前", model_ready_strict_stats.get("rows_before_note_filter")],
+        ["strict 沿用舊版嚴格備註規則後", model_ready_strict_stats.get("rows_after_note_filter")],
+        ["strict base filters 後", model_ready_strict_stats.get("rows_after_base_filters")],
+        ["strict 排除面積極端後", model_ready_strict_stats.get("rows_after_area_outlier_filter")],
+        ["strict 排除格局極端後", model_ready_strict_stats.get("rows_after_layout_outlier_filter")],
+    ]
 
     target_stats = model_ready["unit_price_ping"].describe() if not model_ready.empty else pd.Series(dtype=float)
     target_rows = [[idx, value] for idx, value in target_stats.items()]
@@ -1002,9 +1300,57 @@ def write_summary_report(
         "",
         _markdown_table(["has_parking", "rows"], parking_rows),
         "",
+        "### abnormal_transaction_flag 筆數",
+        "",
+        _markdown_table(["abnormal_transaction_flag", "rows"], abnormal_transaction_rows),
+        "",
+        "### physical_condition_flag 筆數",
+        "",
+        _markdown_table(["physical_condition_flag", "rows"], physical_condition_rows),
+        "",
+        "### renovation_flag 筆數",
+        "",
+        _markdown_table(["renovation_flag", "rows"], renovation_rows),
+        "",
+        "### broad_note_flag 筆數",
+        "",
+        _markdown_table(["broad_note_flag", "rows"], broad_note_rows),
+        "",
         "### special_note_flag 筆數",
         "",
         _markdown_table(["special_note_flag", "rows"], special_note_rows),
+        "",
+        "### 各 note flag = 1 筆數與比例",
+        "",
+        _markdown_table(["flag", "rows", "flagged_rows", "flagged_ratio"], note_flag_ratio_rows),
+        "",
+        "### building_age 缺失筆數與比例",
+        "",
+        _markdown_table(["dataset", "rows", "building_age_missing_rows", "missing_ratio"], building_age_missing_rows),
+        "",
+        "### presale_note_flag 筆數",
+        "",
+        _markdown_table(["presale_note_flag", "rows"], presale_note_rows),
+        "",
+        "### separate_registration_flag 筆數",
+        "",
+        _markdown_table(["separate_registration_flag", "rows"], separate_registration_rows),
+        "",
+        "### area_outlier_flag 筆數",
+        "",
+        _markdown_table(["area_outlier_flag", "rows"], area_outlier_rows),
+        "",
+        "### layout_outlier_flag 筆數",
+        "",
+        _markdown_table(["layout_outlier_flag", "rows"], layout_outlier_rows),
+        "",
+        "### layout_outlier_flag = 1 筆數與比例",
+        "",
+        _markdown_table(["flag", "rows", "flagged_rows", "flagged_ratio"], layout_outlier_ratio_rows),
+        "",
+        "### rooms / living_rooms / bathrooms 統計",
+        "",
+        _markdown_table(["column", "stat", "value"], layout_summary_rows),
         "",
         "## 6. 目標值統計",
         "",
@@ -1032,9 +1378,15 @@ def write_summary_report(
             [
                 ["clean_all", len(clean_all)],
                 ["clean_no_parking", len(clean_no_parking)],
-                ["model_ready", len(model_ready)],
+                ["taipei_house_model_ready.csv", len(model_ready)],
+                ["taipei_house_model_ready_with_presale.csv", len(model_ready_with_presale)],
+                ["taipei_house_model_ready_strict.csv", len(model_ready_strict)],
             ],
         ),
+        "",
+        "### model_ready 篩選補充統計",
+        "",
+        _markdown_table(["step", "rows"], model_ready_filter_rows),
         "",
         f"- feature_config: `{feature_config_path}`",
         "",
@@ -1125,10 +1477,63 @@ def main() -> None:
     logging.info("Rows after invalid header removal: %s", len(raw_combined))
 
     raw_combined = add_date_features(raw_combined)
+    before = len(raw_combined)
+    raw_combined = add_building_age_missing_flag(raw_combined)
+    append_filter_log(
+        filter_log,
+        "add_building_age_missing_flag",
+        before,
+        len(raw_combined),
+        "新增 building_age_missing；building_age 缺失維持 NaN",
+    )
     raw_combined = add_numeric_features(raw_combined)
+    before = len(raw_combined)
+    raw_combined = add_layout_outlier_flag(raw_combined)
+    append_filter_log(
+        filter_log,
+        "flag_layout_outliers",
+        before,
+        len(raw_combined),
+        "新增 layout_outlier_flag；clean_all 保留，model_ready 排除",
+    )
     raw_combined = add_floor_features(raw_combined)
     raw_combined = add_categorical_boolean_features(raw_combined)
+    before = len(raw_combined)
     raw_combined = add_special_note_flag(raw_combined)
+    append_filter_log(
+        filter_log,
+        "flag_special_note_records",
+        before,
+        len(raw_combined),
+        "新增 abnormal/physical/renovation/broad note flags；special_note_flag = abnormal_transaction_flag",
+    )
+    before = len(raw_combined)
+    raw_combined = add_presale_note_flag(raw_combined)
+    append_filter_log(
+        filter_log,
+        "flag_presale_records",
+        before,
+        len(raw_combined),
+        "新增 presale_note_flag；clean_all 保留，主要 model_ready 排除",
+    )
+    before = len(raw_combined)
+    raw_combined = add_separate_registration_flag(raw_combined)
+    append_filter_log(
+        filter_log,
+        "flag_separate_registration_records",
+        before,
+        len(raw_combined),
+        "新增 separate_registration_flag；clean_all 保留，主要 model_ready 排除",
+    )
+    before = len(raw_combined)
+    raw_combined = add_area_outlier_flag(raw_combined)
+    append_filter_log(
+        filter_log,
+        "flag_area_outliers",
+        before,
+        len(raw_combined),
+        "新增 area_outlier_flag；clean_all 保留，model_ready 排除",
+    )
     raw_combined = raw_combined.reset_index(drop=True)
 
     deduped, dedup_stats = deduplicate_records(raw_combined, return_stats=True)
@@ -1165,15 +1570,58 @@ def main() -> None:
     logging.info("clean_no_parking rows: %s", len(clean_no_parking))
 
     before = len(clean_all)
-    model_ready = build_model_ready(clean_all, parking_mode=args.parking_mode)
+    model_ready, model_ready_stats = build_model_ready(
+        clean_all,
+        parking_mode=args.parking_mode,
+        exclude_presale_and_separate=True,
+        note_filter_mode="abnormal",
+        filter_log=filter_log,
+        return_stats=True,
+    )
     append_filter_log(
         filter_log,
         "build_model_ready",
         before,
         len(model_ready),
-        "排除 special_note_flag = 1、透天厝；parking-mode=drop 時排除含車位",
+        "排除 abnormal_transaction_flag = 1、預售屋、分件登記、面積極端、格局極端、透天厝；parking-mode=drop 時排除含車位",
     )
     logging.info("model_ready rows: %s", len(model_ready))
+
+    before = len(clean_all)
+    model_ready_with_presale, model_ready_with_presale_stats = build_model_ready(
+        clean_all,
+        parking_mode=args.parking_mode,
+        exclude_presale_and_separate=False,
+        note_filter_mode="abnormal",
+        filter_log=None,
+        return_stats=True,
+    )
+    append_filter_log(
+        filter_log,
+        "build_model_ready_with_presale",
+        before,
+        len(model_ready_with_presale),
+        "保留 presale_note_flag 與 separate_registration_flag，其他 model_ready 規則相同",
+    )
+    logging.info("model_ready_with_presale rows: %s", len(model_ready_with_presale))
+
+    before = len(clean_all)
+    model_ready_strict, model_ready_strict_stats = build_model_ready(
+        clean_all,
+        parking_mode=args.parking_mode,
+        exclude_presale_and_separate=True,
+        note_filter_mode="strict",
+        filter_log=None,
+        return_stats=True,
+    )
+    append_filter_log(
+        filter_log,
+        "build_model_ready_strict",
+        before,
+        len(model_ready_strict),
+        "沿用舊版嚴格備註規則；保留作為備查",
+    )
+    logging.info("model_ready_strict rows: %s", len(model_ready_strict))
 
     feature_config_path = write_feature_config(output_dir)
     output_results = write_outputs(
@@ -1183,6 +1631,8 @@ def main() -> None:
         clean_all=clean_all,
         clean_no_parking=clean_no_parking,
         model_ready=model_ready,
+        model_ready_with_presale=model_ready_with_presale,
+        model_ready_strict=model_ready_strict,
         filter_log=filter_log,
     )
     write_summary_report(
@@ -1195,7 +1645,12 @@ def main() -> None:
         clean_all=clean_all,
         clean_no_parking=clean_no_parking,
         model_ready=model_ready,
+        model_ready_with_presale=model_ready_with_presale,
         dedup_stats=dedup_stats,
+        model_ready_stats=model_ready_stats,
+        model_ready_with_presale_stats=model_ready_with_presale_stats,
+        model_ready_strict=model_ready_strict,
+        model_ready_strict_stats=model_ready_strict_stats,
         outlier_info=outlier_info,
         output_results=output_results,
         feature_config_path=feature_config_path,

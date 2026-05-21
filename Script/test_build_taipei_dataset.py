@@ -7,8 +7,14 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from build_taipei_dataset import (  # noqa: E402
+    add_area_outlier_flag,
+    add_building_age_missing_flag,
     add_categorical_boolean_features,
+    add_layout_outlier_flag,
     add_numeric_features,
+    add_presale_note_flag,
+    add_separate_registration_flag,
+    add_special_note_flag,
     deduplicate_records,
     parse_chinese_floor,
     parse_roc_date,
@@ -75,3 +81,76 @@ def test_has_parking_detection():
     df = add_categorical_boolean_features(df)
 
     assert df["has_parking"].tolist() == [1, 1, 1, 0]
+
+
+def test_presale_note_flag():
+    df = pd.DataFrame(
+        {
+            "備註": [
+                "預售屋、或土地及建物分件登記案件",
+                "本案為預售屋買賣",
+                "一般交易",
+            ]
+        }
+    )
+    df = standardize_columns(df)
+    df = add_presale_note_flag(df)
+
+    assert df["presale_note_flag"].tolist() == [1, 1, 0]
+
+
+def test_separate_registration_flag():
+    df = pd.DataFrame({"備註": ["土地及建物分件登記案件", "一般交易"]})
+    df = standardize_columns(df)
+    df = add_separate_registration_flag(df)
+
+    assert df["separate_registration_flag"].tolist() == [1, 0]
+
+
+def test_building_age_missing_flag():
+    df = pd.DataFrame({"building_age": [np.nan, 12.5]})
+    df = add_building_age_missing_flag(df)
+
+    assert df["building_age_missing"].tolist() == [1, 0]
+
+
+def test_area_outlier_flag():
+    df = pd.DataFrame({"building_area_m2": [5, 800, 80, np.nan]})
+    df = add_area_outlier_flag(df)
+
+    assert df["area_outlier_flag"].tolist() == [1, 1, 0, 0]
+
+
+def test_special_note_flag():
+    df = pd.DataFrame(
+        {
+            "note_raw": [
+                "親友交易",
+                "法院拍賣案件",
+                "含裝潢",
+                "包含其他約定事項",
+                "增建未登記",
+                "一般交易",
+            ]
+        }
+    )
+    df = add_special_note_flag(df)
+
+    assert df["abnormal_transaction_flag"].tolist() == [1, 1, 0, 0, 0, 0]
+    assert df["physical_condition_flag"].tolist() == [0, 0, 0, 0, 1, 0]
+    assert df["renovation_flag"].tolist() == [0, 0, 1, 0, 0, 0]
+    assert df["broad_note_flag"].tolist() == [0, 0, 0, 1, 0, 0]
+    assert df["special_note_flag"].tolist() == [1, 1, 0, 0, 0, 0]
+
+
+def test_layout_outlier_flag():
+    df = pd.DataFrame(
+        {
+            "rooms": [33, 3, 3, 3],
+            "living_rooms": [2, 22, 2, 2],
+            "bathrooms": [2, 2, 22, 2],
+        }
+    )
+    df = add_layout_outlier_flag(df)
+
+    assert df["layout_outlier_flag"].tolist() == [1, 1, 1, 0]

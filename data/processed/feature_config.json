@@ -13,6 +13,7 @@
     "trade_year",
     "main_use_missing",
     "building_age",
+    "building_age_missing",
     "building_area_m2",
     "building_area_ping",
     "main_building_area_m2",
@@ -31,7 +32,16 @@
     "has_management",
     "has_elevator",
     "has_parking",
-    "parking_area_m2"
+    "parking_area_m2",
+    "area_outlier_flag",
+    "layout_outlier_flag",
+    "abnormal_transaction_flag",
+    "physical_condition_flag",
+    "renovation_flag",
+    "broad_note_flag",
+    "special_note_flag",
+    "presale_note_flag",
+    "separate_registration_flag"
   ],
   "drop_cols": [
     "id",
