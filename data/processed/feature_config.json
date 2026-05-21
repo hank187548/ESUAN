@@ -1,0 +1,54 @@
+{
+  "target_col": "unit_price_ping",
+  "categorical_features": [
+    "district",
+    "trade_month",
+    "trade_quarter",
+    "trade_yq",
+    "building_type",
+    "main_use",
+    "material"
+  ],
+  "numeric_features": [
+    "trade_year",
+    "main_use_missing",
+    "building_age",
+    "building_area_m2",
+    "building_area_ping",
+    "main_building_area_m2",
+    "main_building_area_ping",
+    "auxiliary_area_m2",
+    "balcony_area_m2",
+    "land_area_m2",
+    "floor",
+    "total_floor",
+    "floor_ratio",
+    "is_basement",
+    "multi_floor",
+    "rooms",
+    "living_rooms",
+    "bathrooms",
+    "has_management",
+    "has_elevator",
+    "has_parking",
+    "parking_area_m2"
+  ],
+  "drop_cols": [
+    "id",
+    "transfer_id",
+    "source_release",
+    "source_order",
+    "source_file",
+    "source_folder",
+    "trade_date",
+    "address_raw",
+    "note_raw"
+  ],
+  "leakage_cols": [
+    "total_price",
+    "total_price_wan",
+    "unit_price_m2",
+    "unit_price_ping",
+    "parking_price"
+  ]
+}

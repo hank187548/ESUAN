@@ -1,0 +1,14 @@
+﻿step,rows_before,rows_after,rows_removed,description
+raw_combined,74181,74181,0,讀取並合併所有臺北市買賣主檔
+remove_invalid_header_rows,74181,74168,13,移除英文欄位說明、重複 header 或明顯非資料列
+deduplicate,74168,74168,0,同 id 保留 source_order 最大；id 缺失時使用 fallback key
+filter_transaction_target,74168,60638,13530,只保留交易標的包含「房地」
+filter_main_use,60638,49756,10882,保留住家用或主要用途缺失，排除明顯非住宅用途
+filter_building_type,49756,49756,0,保留住宅大樓、華廈、公寓、套房、透天厝
+filter_invalid_dates,49756,49756,0,排除 trade_date 缺失
+filter_invalid_price_area,49756,49702,54,排除價格、面積、行政區或建物型態異常
+filter_invalid_building_age,49702,49696,6,排除 building_age < 0 或 > 100
+filter_outliers,49696,48702,994,以 unit_price_ping 1% 到 99% quantile 過濾
+build_clean_all,48702,48702,0,建立 clean_all dataset
+build_clean_no_parking,48702,31255,17447,clean_all 中只保留 has_parking = 0
+build_model_ready,48702,25424,23278,排除 special_note_flag = 1、透天厝；parking-mode=drop 時排除含車位
