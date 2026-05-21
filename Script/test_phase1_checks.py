@@ -56,6 +56,10 @@ def test_rolling_split_uses_trade_date_and_has_non_overlapping_windows():
         test_quarters=1,
         step_quarters=1,
         exclude_incomplete_last_quarter=False,
+        min_trade_date="2020-01-01",
+        min_train_samples=1,
+        min_valid_samples=1,
+        min_test_samples=1,
     )
 
     assert not folds.empty
@@ -80,3 +84,88 @@ def test_rolling_split_uses_trade_date_and_has_non_overlapping_windows():
         end = pd.Timestamp(row[f"{row['split']}_end"])
         assert start <= trade_date <= end
         assert row["source_release"] == "CURRENT"
+
+
+def test_rolling_split_filters_before_min_trade_date():
+    dates = pd.date_range("2018-01-01", periods=16, freq="QS")
+    df = pd.DataFrame(
+        {
+            "id": [f"ID{i:02d}" for i in range(len(dates))],
+            "trade_date": dates,
+            "district": ["中山區"] * len(dates),
+        }
+    )
+
+    folds, _, metadata = build_rolling_folds(
+        df,
+        train_years=1,
+        valid_quarters=1,
+        test_quarters=1,
+        step_quarters=1,
+        exclude_incomplete_last_quarter=False,
+        min_trade_date="2019-01-01",
+        min_train_samples=1,
+        min_valid_samples=1,
+        min_test_samples=1,
+    )
+
+    assert metadata["excluded_before_min_trade_date_rows"] == 4
+    assert not folds.empty
+    merged = folds.merge(df[["id", "trade_date"]], on="id", how="left")
+    assert (merged["trade_date"] >= pd.Timestamp("2019-01-01")).all()
+
+
+def test_rolling_split_sample_thresholds_exclude_candidate_folds():
+    dates = pd.date_range("2019-01-01", periods=8, freq="QS")
+    df = pd.DataFrame(
+        {
+            "id": [f"ID{i:02d}" for i in range(len(dates))],
+            "trade_date": dates,
+            "district": ["中山區"] * len(dates),
+        }
+    )
+
+    folds, summary, metadata = build_rolling_folds(
+        df,
+        train_years=1,
+        valid_quarters=1,
+        test_quarters=1,
+        step_quarters=1,
+        exclude_incomplete_last_quarter=False,
+        min_trade_date="2019-01-01",
+        min_train_samples=100,
+        min_valid_samples=1,
+        min_test_samples=1,
+    )
+
+    assert folds.empty
+    assert summary.empty
+    assert metadata["excluded_candidate_folds"]
+    assert "train_rows < 100" in metadata["excluded_candidate_folds"][0]["exclusion_reason"]
+
+
+def test_rolling_split_step_is_one_quarter():
+    dates = pd.date_range("2019-01-01", periods=12, freq="QS")
+    df = pd.DataFrame(
+        {
+            "id": [f"ID{i:02d}" for i in range(len(dates))],
+            "trade_date": dates,
+            "district": ["中山區"] * len(dates),
+        }
+    )
+
+    _, summary, _ = build_rolling_folds(
+        df,
+        train_years=1,
+        valid_quarters=1,
+        test_quarters=1,
+        step_quarters=1,
+        exclude_incomplete_last_quarter=False,
+        min_trade_date="2019-01-01",
+        min_train_samples=1,
+        min_valid_samples=1,
+        min_test_samples=1,
+    )
+
+    test_periods = pd.to_datetime(summary["test_start"]).dt.to_period("Q")
+    assert all((test_periods.iloc[i] - test_periods.iloc[i - 1]).n == 1 for i in range(1, len(test_periods)))

@@ -3,3 +3,9 @@ Data/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+@eaDir/
+data/processed/phase1_oof_predictions.csv
+models/phase1/
+
+# Large generated processed files
+data/processed/taipei_house_raw_combined.csv
