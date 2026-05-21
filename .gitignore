@@ -9,3 +9,8 @@ models/phase1/
 
 # Large generated processed files
 data/processed/taipei_house_raw_combined.csv
+data/processed/phase*_oof_predictions.csv
+data/processed/taipei_house_model_ready_v*.csv
+data/processed/taipei_house_model_ready_v*.parquet
+models/
+reports/**/_phase*_tmp/

@@ -1,0 +1,5 @@
+﻿check_name,status,details
+v3_features_not_target_or_leakage,PASS,No comparable feature overlaps target/leakage/drop columns.
+model_features_exclude_target_and_leakage,PASS,No target/leakage/drop columns in numeric/categorical features.
+comp_365d_pool_uses_past_dates_only,PASS,Checked 100 sampled rows; max candidate trade_date is < current trade_date and same-day candidates are excluded.
+comp_730d_pool_uses_past_dates_only,PASS,Checked 100 sampled rows; max candidate trade_date is < current trade_date and same-day candidates are excluded.
