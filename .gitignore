@@ -12,5 +12,14 @@ data/processed/taipei_house_raw_combined.csv
 data/processed/phase*_oof_predictions.csv
 data/processed/taipei_house_model_ready_v*.csv
 data/processed/taipei_house_model_ready_v*.parquet
+data/processed/v4_embedding_cache/
 models/
 reports/**/_phase*_tmp/
+reports/v4/embedding_comparable_features_v4_*.csv
+reports/v4/embedding_comparable_features_v4_*.md
+reports/v4/embedding_retrieval_sample_matches.csv
+reports/v4/reranker_sample_matches.csv
+reports/v4/text_representation_sample.csv
+reports/feature_config_model_v4_*.json
+reports/v4/feature_config_model_v4_*.json
+analysis/**/shap_values_sample.*
