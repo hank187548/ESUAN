@@ -4,7 +4,9 @@ import argparse
 import hashlib
 import json
 import logging
+import multiprocessing as mp
 import os
+import time
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Protocol
@@ -81,11 +83,18 @@ class RerankerBackend(Protocol):
         ...
 
 
-def setup_logging() -> None:
+def setup_logging(log_file: str | Path | None = None) -> None:
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    if log_file:
+        resolved_log = resolve_path(log_file)
+        resolved_log.parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(resolved_log, mode="a", encoding="utf-8"))
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=handlers,
+        force=True,
     )
 
 
@@ -318,6 +327,28 @@ def load_or_compute_embeddings(
     return vectors
 
 
+def load_embeddings_from_cache_if_valid(df: pd.DataFrame, cache_dir: str | Path, model_name: str) -> np.ndarray | None:
+    cache_root = resolve_path(cache_dir)
+    vector_path = cache_root / "embedding_vectors.npy"
+    meta_path = cache_root / "embedding_meta.csv"
+    info_path = cache_root / "embedding_cache_info.json"
+    if not (vector_path.exists() and meta_path.exists() and info_path.exists()):
+        return None
+    text_hash = hash_texts(df["text_representation"])
+    with info_path.open("r", encoding="utf-8") as f:
+        info = json.load(f)
+    meta = pd.read_csv(meta_path, encoding="utf-8-sig")
+    if (
+        info.get("model_name") == model_name
+        and info.get("text_hash") == text_hash
+        and len(meta) == len(df)
+        and meta["id"].astype(str).tolist() == df["id"].astype(str).tolist()
+    ):
+        logging.info("Using existing embedding cache: %s", vector_path)
+        return np.load(vector_path)
+    return None
+
+
 def get_candidate_indices(group: pd.DataFrame, current_pos: int, window_days: int) -> np.ndarray:
     dates = group["trade_date"].to_numpy(dtype="datetime64[ns]")
     current_date = dates[current_pos]
@@ -427,6 +458,9 @@ def compute_embedding_comparable_features(
     use_reranker: bool,
     reranker: RerankerBackend | None,
     reranker_batch_size: int,
+    target_row_orders: set[int] | None = None,
+    progress_log_interval: int = 1000,
+    progress_label: str = "main",
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     output = df.copy()
     output["_row_order"] = np.arange(len(output))
@@ -435,6 +469,17 @@ def compute_embedding_comparable_features(
 
     retrieval_samples: list[dict[str, Any]] = []
     reranker_samples: list[dict[str, Any]] = []
+    total_targets = len(target_row_orders) if target_row_orders is not None else len(output)
+    processed_targets = 0
+    started_at = time.monotonic()
+    logging.info(
+        "%s comparable feature generation started: rows=%s, embedding_top_k=%s, reranker_top_k=%s, use_reranker=%s",
+        progress_label,
+        total_targets,
+        embedding_top_k,
+        reranker_top_k_value,
+        use_reranker,
+    )
 
     for _, group in output.groupby(["district", "building_type"], dropna=False, sort=False):
         group = group.sort_values(["trade_date", "_row_order"], kind="mergesort").reset_index(drop=True)
@@ -442,6 +487,8 @@ def compute_embedding_comparable_features(
         group_embeddings = embeddings[row_orders]
         for current_pos, current_row in group.iterrows():
             current_global_idx = int(current_row["_row_order"])
+            if target_row_orders is not None and current_global_idx not in target_row_orders:
+                continue
             for window_days in WINDOWS:
                 candidate_pos = get_candidate_indices(group, current_pos, window_days)
                 if len(candidate_pos) == 0:
@@ -510,14 +557,116 @@ def compute_embedding_comparable_features(
                 )
                 for key, value in summary.items():
                     output.loc[current_global_idx, f"emb_{window_days}d_{key}"] = value
+            processed_targets += 1
+            if progress_log_interval > 0 and (
+                processed_targets % progress_log_interval == 0 or processed_targets == total_targets
+            ):
+                elapsed = time.monotonic() - started_at
+                pct = processed_targets / max(total_targets, 1) * 100
+                rows_per_sec = processed_targets / elapsed if elapsed > 0 else np.nan
+                eta_sec = (total_targets - processed_targets) / rows_per_sec if rows_per_sec and rows_per_sec > 0 else np.nan
+                logging.info(
+                    "%s progress: %s/%s rows (%.1f%%), elapsed %.1f min, ETA %.1f min",
+                    progress_label,
+                    processed_targets,
+                    total_targets,
+                    pct,
+                    elapsed / 60,
+                    eta_sec / 60 if np.isfinite(eta_sec) else np.nan,
+                )
 
     for feature in COUNT_FEATURES:
         output[feature] = output[feature].fillna(0).astype(int)
+    logging.info("%s comparable feature generation finished in %.1f min", progress_label, (time.monotonic() - started_at) / 60)
     return (
         output.drop(columns=["_row_order"]),
         pd.DataFrame(retrieval_samples),
         pd.DataFrame(reranker_samples),
     )
+
+
+def _compute_embedding_feature_shard(payload: dict[str, Any]) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    setup_logging(payload.get("log_file"))
+    shard_index = payload["shard_index"]
+    device = payload["device"]
+    row_orders = set(payload["row_orders"])
+    logging.info("Shard %s starting on %s with %s rows", shard_index, device, len(row_orders))
+    embeddings = np.load(payload["embedding_vector_path"], mmap_mode="r")
+    reranker_backend = None
+    if payload["use_reranker"]:
+        reranker_backend = CrossEncoderRerankerBackend(
+            model_name=payload["reranker_model_name"],
+            model_path=payload["reranker_model_path"],
+            download_if_missing=payload["download_if_missing"],
+            device=device,
+            max_length=payload["max_length"],
+            dtype=payload["dtype"],
+        )
+    features, retrieval_sample, reranker_sample = compute_embedding_comparable_features(
+        payload["df"],
+        embeddings=embeddings,
+        embedding_top_k=payload["embedding_top_k"],
+        reranker_top_k_value=payload["reranker_top_k"],
+        use_reranker=payload["use_reranker"],
+        reranker=reranker_backend,
+        reranker_batch_size=payload["reranker_batch_size"],
+        target_row_orders=row_orders,
+        progress_log_interval=payload["progress_log_interval"],
+        progress_label=f"shard {shard_index} ({device})",
+    )
+    shard_features = features.loc[features.index.isin(row_orders), ["id", *EMB_FEATURES]].copy()
+    logging.info("Shard %s finished", shard_index)
+    return shard_features, retrieval_sample, reranker_sample
+
+
+def compute_embedding_comparable_features_parallel(
+    df: pd.DataFrame,
+    embedding_cache_dir: str | Path,
+    embedding_top_k: int,
+    reranker_top_k_value: int,
+    args: argparse.Namespace,
+    gpu_ids: list[int],
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    if not args.use_reranker:
+        raise ValueError("Parallel mode is intended for reranker runs. Use single-process mode with --use-reranker false.")
+    cache_root = resolve_path(embedding_cache_dir)
+    vector_path = cache_root / "embedding_vectors.npy"
+    if not vector_path.exists():
+        raise FileNotFoundError(f"Embedding cache does not exist: {vector_path}")
+    devices = [f"cuda:{gpu_id}" for gpu_id in gpu_ids] if gpu_ids else [resolve_device(args.device, gpu_ids)]
+    row_orders = np.arange(len(df))
+    shards = [row_orders[i:: len(devices)].tolist() for i in range(len(devices))]
+    payloads = [
+        {
+            "shard_index": i,
+            "device": device,
+            "row_orders": shard,
+            "df": df,
+            "embedding_vector_path": str(vector_path),
+            "embedding_top_k": embedding_top_k,
+            "reranker_top_k": reranker_top_k_value,
+            "use_reranker": args.use_reranker,
+            "reranker_batch_size": args.reranker_batch_size,
+            "reranker_model_name": args.reranker_model_name,
+            "reranker_model_path": args.reranker_model_path,
+            "download_if_missing": args.download_if_missing,
+            "max_length": args.max_length,
+            "dtype": args.dtype,
+            "progress_log_interval": args.progress_log_interval,
+            "log_file": args.log_file,
+        }
+        for i, (device, shard) in enumerate(zip(devices, shards, strict=False))
+    ]
+    logging.info("Running parallel reranker on devices: %s", ", ".join(devices))
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(processes=len(payloads)) as pool:
+        results = pool.map(_compute_embedding_feature_shard, payloads)
+    feature_parts, retrieval_parts, reranker_parts = zip(*results, strict=False)
+    feature_table = pd.concat(feature_parts, ignore_index=True)
+    output = df.merge(feature_table, on="id", how="left")
+    for feature in COUNT_FEATURES:
+        output[feature] = output[feature].fillna(0).astype(int)
+    return output, pd.concat(retrieval_parts, ignore_index=True), pd.concat(reranker_parts, ignore_index=True)
 
 
 def build_feature_config(base_config: dict[str, Any], mode: str) -> dict[str, Any]:
@@ -766,6 +915,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--embedding-top-k", type=int, default=50)
     parser.add_argument("--reranker-top-k", type=int, default=10)
     parser.add_argument("--use-reranker", type=str_to_bool, default=True)
+    parser.add_argument("--parallel-reranker", type=str_to_bool, default=False)
+    parser.add_argument("--parallel-gpu-ids", default="")
+    parser.add_argument("--progress-log-interval", type=int, default=1000)
+    parser.add_argument("--log-file", default="reports/v4/embedding_comparable_features_v4.log")
     parser.add_argument("--allow-reranker-fallback", type=str_to_bool, default=False)
     parser.add_argument("--include-address", type=str_to_bool, default=False)
     parser.add_argument("--include-note-raw", type=str_to_bool, default=False)
@@ -775,8 +928,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    setup_logging()
     args = build_arg_parser().parse_args()
+    setup_logging(args.log_file)
     report_dir = resolve_path(args.report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
 
@@ -792,49 +945,68 @@ def main() -> None:
     text_sample = df_v3[["id", "trade_date", "district", "building_type", "text_representation"]].head(200)
     text_sample.to_csv(report_dir / "text_representation_sample.csv", index=False, encoding="utf-8-sig")
 
-    embedding_backend = SentenceTransformerEmbeddingBackend(
-        model_name=args.embedding_model_name,
-        model_path=args.embedding_model_path,
-        download_if_missing=args.download_if_missing,
-        device=device,
-        dtype=args.dtype,
-    )
-    embeddings = load_or_compute_embeddings(
+    embeddings = None if args.force_recompute_embeddings else load_embeddings_from_cache_if_valid(
         df_v3,
-        backend=embedding_backend,
         cache_dir=args.embedding_cache_dir,
         model_name=args.embedding_model_name,
-        batch_size=args.embedding_batch_size,
-        force_recompute=args.force_recompute_embeddings,
     )
-    del embedding_backend
-    release_gpu_memory()
+    if embeddings is None:
+        embedding_backend = SentenceTransformerEmbeddingBackend(
+            model_name=args.embedding_model_name,
+            model_path=args.embedding_model_path,
+            download_if_missing=args.download_if_missing,
+            device=device,
+            dtype=args.dtype,
+        )
+        embeddings = load_or_compute_embeddings(
+            df_v3,
+            backend=embedding_backend,
+            cache_dir=args.embedding_cache_dir,
+            model_name=args.embedding_model_name,
+            batch_size=args.embedding_batch_size,
+            force_recompute=args.force_recompute_embeddings,
+        )
+        del embedding_backend
+        release_gpu_memory()
 
-    reranker_backend = None
-    if args.use_reranker:
-        try:
-            reranker_backend = CrossEncoderRerankerBackend(
-                model_name=args.reranker_model_name,
-                model_path=args.reranker_model_path,
-                download_if_missing=args.download_if_missing,
-                device=device,
-                max_length=args.max_length,
-                dtype=args.dtype,
-            )
-        except Exception:
-            if not args.allow_reranker_fallback:
-                raise
-            logging.exception("Reranker failed to initialize; falling back to embedding-only because fallback is allowed.")
+    parallel_gpu_ids = parse_gpu_ids(args.parallel_gpu_ids) if args.parallel_gpu_ids else gpu_ids
+    if args.parallel_reranker:
+        df_v3_features, retrieval_sample, reranker_sample = compute_embedding_comparable_features_parallel(
+            df_v3,
+            embedding_cache_dir=args.embedding_cache_dir,
+            embedding_top_k=args.embedding_top_k,
+            reranker_top_k_value=args.reranker_top_k,
+            args=args,
+            gpu_ids=parallel_gpu_ids,
+        )
+    else:
+        reranker_backend = None
+        if args.use_reranker:
+            try:
+                reranker_backend = CrossEncoderRerankerBackend(
+                    model_name=args.reranker_model_name,
+                    model_path=args.reranker_model_path,
+                    download_if_missing=args.download_if_missing,
+                    device=device,
+                    max_length=args.max_length,
+                    dtype=args.dtype,
+                )
+            except Exception:
+                if not args.allow_reranker_fallback:
+                    raise
+                logging.exception("Reranker failed to initialize; falling back to embedding-only because fallback is allowed.")
 
-    df_v3_features, retrieval_sample, reranker_sample = compute_embedding_comparable_features(
-        df_v3,
-        embeddings=embeddings,
-        embedding_top_k=args.embedding_top_k,
-        reranker_top_k_value=args.reranker_top_k,
-        use_reranker=args.use_reranker and reranker_backend is not None,
-        reranker=reranker_backend,
-        reranker_batch_size=args.reranker_batch_size,
-    )
+        df_v3_features, retrieval_sample, reranker_sample = compute_embedding_comparable_features(
+            df_v3,
+            embeddings=embeddings,
+            embedding_top_k=args.embedding_top_k,
+            reranker_top_k_value=args.reranker_top_k,
+            use_reranker=args.use_reranker and reranker_backend is not None,
+            reranker=reranker_backend,
+            reranker_batch_size=args.reranker_batch_size,
+            progress_log_interval=args.progress_log_interval,
+            progress_label=f"main ({device})",
+        )
 
     emb_cols = ["id"] + EMB_FEATURES
     df_add = df_v3_features

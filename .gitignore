@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 @eaDir/
 data/processed/phase1_oof_predictions.csv
+data/processed/*_oof_predictions.csv
 models/phase1/
 
 # Large generated processed files
@@ -20,6 +21,8 @@ reports/v4/embedding_comparable_features_v4_*.md
 reports/v4/embedding_retrieval_sample_matches.csv
 reports/v4/reranker_sample_matches.csv
 reports/v4/text_representation_sample.csv
+reports/**/*.log
 reports/feature_config_model_v4_*.json
 reports/v4/feature_config_model_v4_*.json
 analysis/**/shap_values_sample.*
+~$*

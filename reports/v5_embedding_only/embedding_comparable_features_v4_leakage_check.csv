@@ -1,0 +1,6 @@
+﻿check_name,status,details
+emb_features_not_target_or_leakage,PASS,No emb_ feature overlaps target/leakage/drop cols.
+v4_add_feature_config_excludes_leakage,PASS,No leakage/drop/target columns in features.
+v4_replace_feature_config_excludes_leakage,PASS,No leakage/drop/target columns in features.
+emb_730d_candidates_use_past_dates_only,PASS,Checked 100 sampled rows; candidates use trade_date < current trade_date.
+emb_1095d_candidates_use_past_dates_only,PASS,Checked 100 sampled rows; candidates use trade_date < current trade_date.
