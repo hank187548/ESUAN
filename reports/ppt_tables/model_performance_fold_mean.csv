@@ -1,0 +1,5 @@
+﻿version,feature_set,mae,rmse,mape,r2
+v2_time_aware,Time-aware market features,10.452391,13.887399,14.589689,0.697069
+v3_rule_based_comparable,+ Rule-based comparable sales,10.231084,13.662415,14.345347,0.707523
+v5_embedding_only,+ Embedding comparable sales,10.088591,13.491044,14.204447,0.71466
+v4_reranker_tuned_lgbm,+ Embedding reranker comparable sales + tuned LightGBM,9.922755,13.32423,13.944104,0.721785

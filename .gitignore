@@ -27,3 +27,5 @@ reports/v4/feature_config_model_v4_*.json
 analysis/**/shap_values_sample.*
 ~$*
 簡報1.pptx
+*.pptx
+Thumbs.db
