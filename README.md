@@ -1,6 +1,6 @@
 # Taipei House Price Modeling
 
-以臺北市實價登錄資料為核心的住宅單價預測專案。目標是建立可回測、可解釋、能追蹤行政區誤差的房價模型，並用 rolling time split 避免把未來資訊帶進訓練流程。
+This project builds a reproducible and explainable residential unit-price model for Taipei real-estate transactions. It focuses on time-aware validation, district-level error tracking, and leakage-controlled comparable-sale features.
 
 <p align="center">
   <img src="MAE_TAIPEI.png" alt="Taipei district MAE by district" width="780">
@@ -8,21 +8,21 @@
 
 <p align="center">
   <b>V4 Tuned LightGBM district-level MAE</b><br>
-  MAE 單位為萬元/坪；高單價行政區通常會有較高的絕對誤差。
+  MAE is measured in NT$10,000 per ping. Higher-priced districts tend to have larger absolute errors.
 </p>
 
 ## Highlights
 
-- 資料來源：臺北市住宅實價登錄資料，建置後模型資料列數約 90,481 筆。
-- 預測目標：`unit_price_ping`，也就是每坪單價。
-- 驗證方式：15 組 rolling folds，test quarter 從 2022Q3 到 2026Q1。
-- 主要模型：LightGBM regression pipeline，搭配 train-only preprocessing。
-- 特色工程：時間感知行情、規則式 comparable sales、Qwen embedding + reranker comparable features。
-- 泄漏控管：歷史行情與 comparable features 只使用 `trade_date < current trade_date` 的交易。
+- Data source: Taipei residential real-estate transaction records, with about 90,481 model-ready rows.
+- Prediction target: `unit_price_ping`, the transaction unit price per ping.
+- Validation: 15 rolling folds, with test quarters from 2022Q3 through 2026Q1.
+- Main model: LightGBM regression pipeline with train-only preprocessing.
+- Feature engineering: time-aware market signals, rule-based comparable sales, and Qwen embedding + reranker comparable features.
+- Leakage control: historical market and comparable-sale features only use transactions where `trade_date < current trade_date`.
 
 ## Current Best Result
 
-V4 使用 embedding/reranker comparable features 加上 LightGBM parameter search。最佳參數來自 rolling test-period mean MAE。
+V4 combines embedding/reranker comparable-sale features with a LightGBM parameter search. The selected configuration is ranked by rolling test-period mean MAE.
 
 | model | folds | mean MAE | mean RMSE | mean MAPE | mean R2 |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -30,11 +30,11 @@ V4 使用 embedding/reranker comparable features 加上 LightGBM parameter searc
 | V3 tree model | 15 | 10.2311 | 13.6624 | 14.3453% | 0.7075 |
 | District + building-type median baseline | 15 | 15.2770 | 20.9384 | 18.7750% | 0.3122 |
 
-最佳 V4 模型相較 district + building-type median baseline，mean MAE 約降低 35%。
+The best V4 model reduces mean MAE by about 35% compared with the district + building-type median baseline.
 
 ## What Drives The Model
 
-V4 feature importance 顯示，comparable sales 是主要訊號來源，其次是房屋本身條件與近期市場行情。
+V4 feature importance shows that comparable-sale signals dominate the model, followed by housing attributes and recent market signals.
 
 | feature group | gain share |
 | --- | ---: |
@@ -44,7 +44,7 @@ V4 feature importance 顯示，comparable sales 是主要訊號來源，其次�
 | Location and Time | 0.77% |
 | Note / Quality Flags | 0.17% |
 
-詳細圖表與 CSV 在 `reports/v4/lightgbm_search/feature_importance/`。
+Detailed charts and CSV exports are available in `reports/v4/lightgbm_search/feature_importance/`.
 
 ## Project Structure
 
